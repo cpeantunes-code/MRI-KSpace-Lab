@@ -1,4 +1,7 @@
 import io
+import base64
+import html
+import streamlit.components.v1 as components
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -96,10 +99,110 @@ def fig_image(arr, title, is_kspace=False):
     fig.update_layout(title=dict(text=title,font=dict(size=15,color='#E8F3FF')),paper_bgcolor='#14283C',plot_bgcolor='#14283C',margin=dict(l=8,r=8,t=45,b=8),height=330)
     return fig
 
+def image_comparator(original, reconstructed, tag):
+    """Comparador antes/depois: divisor arrastável, sem bibliotecas externas."""
+    original_png = base64.b64encode(png_bytes(original)).decode('ascii')
+    reconstructed_png = base64.b64encode(png_bytes(reconstructed)).decode('ascii')
+    height, width = original.shape
+    ratio = width / height
+    # A altura do iframe acomoda imagens verticais e horizontais sem cortes.
+    display_height = min(520, max(240, int(680 / ratio)))
+    frame_height = display_height + 100
+    safe_tag = html.escape(tag, quote=True)
+    contents = f"""
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  html, body {{ margin: 0; padding: 0; background: #0D1929; color: #FFF;
+    font-family: system-ui, -apple-system, sans-serif; }}
+  .wrap {{ width: 100%; max-width: 680px; margin: 0 auto; box-sizing: border-box; }}
+  .hint {{ margin: 0 0 8px; color: #FFF; font-size: 13px; }}
+  .scene {{ position: relative; width: 100%; height: {display_height}px;
+    border: 1px solid #35546B; border-radius: 12px; overflow: hidden;
+    background: #14283C; cursor: ew-resize; touch-action: pan-y; user-select: none; }}
+  .scene img {{ width: 100%; height: 100%; object-fit: contain; position: absolute;
+    inset: 0; display: block; pointer-events: none; }}
+  .after {{ clip-path: inset(0 0 0 50%); }}
+  .line {{ position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+    background: #35C8F5; transform: translateX(-50%); pointer-events: none;
+    box-shadow: 0 0 10px #35C8F599; }}
+  .handle {{ position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 39px; height: 39px; border-radius: 50%; background: #35C8F5;
+    border: 2px solid #FFF; color: #0D1929; display: grid; place-items: center;
+    font-weight: 900; pointer-events: none; box-sizing: border-box; }}
+  .tag {{ position: absolute; top: 12px; z-index: 2; padding: 5px 9px;
+    background: #0D1929DD; border: 1px solid #35546B;
+    border-radius: 7px; font-size: 12px; color: #FFF; pointer-events: none; }}
+  .left {{ left: 12px; }} .right {{ right: 12px; }}
+  .control {{ display: flex; align-items: center; gap: 12px; margin-top: 12px;
+    color: #FFF; font-size: 12px; }}
+  .control input {{ flex: 1; accent-color: #35C8F5; cursor: pointer; }}
+  .value {{ color: #35C8F5; min-width: 36px; text-align: right; }}
+</style>
+</head>
+<body>
+<div class="wrap" data-experience="{safe_tag}">
+  <p class="hint">Arrasta a linha ciano sobre a imagem ou utiliza o controlo abaixo.</p>
+  <div class="scene" id="scene" role="img" aria-label="Comparação interativa da imagem original com a reconstrução">
+    <img src="data:image/png;base64,{original_png}" alt="Imagem original"/>
+    <img class="after" id="after" src="data:image/png;base64,{reconstructed_png}" alt="Imagem reconstruída"/>
+    <span class="tag left">Original</span>
+    <span class="tag right">Reconstrução</span>
+    <div class="line" id="line"></div>
+    <div class="handle" id="handle">⇄</div>
+  </div>
+  <div class="control">
+    <span>Original</span>
+    <input id="split" type="range" min="0" max="100" value="50"
+      aria-label="Posição da comparação antes e depois" />
+    <span>Reconstrução</span><span id="value" class="value">50%</span>
+  </div>
+</div>
+<script>
+(() => {{
+  const scene = document.getElementById('scene');
+  const slider = document.getElementById('split');
+  const after = document.getElementById('after');
+  const line = document.getElementById('line');
+  const handle = document.getElementById('handle');
+  const value = document.getElementById('value');
+  let dragging = false;
+  function setPosition(v) {{
+    const x = Math.max(0, Math.min(100, Number(v)));
+    after.style.clipPath = `inset(0 0 0 ${{x}}%)`;
+    line.style.left = `${{x}}%`;
+    handle.style.left = `${{x}}%`;
+    slider.value = String(x);
+    value.textContent = `${{Math.round(x)}}%`;
+  }}
+  function move(e) {{
+    const r = scene.getBoundingClientRect();
+    setPosition(100 * (e.clientX - r.left) / r.width);
+  }}
+  slider.addEventListener('input', e => setPosition(e.target.value));
+  scene.addEventListener('pointerdown', e => {{
+    dragging = true;
+    scene.setPointerCapture(e.pointerId);
+    move(e);
+  }});
+  scene.addEventListener('pointermove', e => {{ if (dragging) move(e); }});
+  scene.addEventListener('pointerup', () => {{ dragging = false; }});
+  scene.addEventListener('pointercancel', () => {{ dragging = false; }});
+}})();
+</script>
+</body>
+</html>"""
+    components.html(contents, height=frame_height, scrolling=False)
+
 def compare(original,k_changed,result,tag):
     cols=st.columns(3)
     for col,a,title,is_k in zip(cols,[original,k_changed,result],['Imagem original','K-space processado','Reconstrução'],[False,True,False]):
         with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False},key=f'compare_{tag}_{title}')
+    st.markdown('#### Comparação antes/depois')
+    image_comparator(original, result, tag)
     vals=metrics(original,result)
     c1,c2,c3=st.columns(3)
     c1.metric('MSE',f'{vals["MSE"]:.5f}')
@@ -237,3 +340,4 @@ with tabs[4]:
         file_name='metricas_atuais_kspace.csv', mime='text/csv', key='download_dynamic_metrics',
     )
     st.info('**Interpretação:** MSE mais baixo, PSNR mais alto e SSIM mais próximo de 1 indicam maior fidelidade à imagem original. Cada processamento é avaliado separadamente, sem combinar filtragem, amostragem e ruído.')
+    

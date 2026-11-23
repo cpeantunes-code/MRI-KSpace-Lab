@@ -78,7 +78,9 @@ def fig_image(arr, title, is_kspace=False):
 def compare(original,k_changed,result,tag):
     cols=st.columns(3)
     for col,a,title,is_k in zip(cols,[original,k_changed,result],['Imagem original','K-space processado','Reconstrução'],[False,True,False]):
-        with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False})
+        
+        with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False},key=f'{tag}_{title}')
+            
     vals=metrics(original,result)
     c1,c2,c3=st.columns(3)
     c1.metric('MSE',f'{vals["MSE"]:.5f}')

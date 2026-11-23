@@ -13,7 +13,28 @@ st.markdown('''<style>
 .block-container {padding-top:1.5rem;max-width:1500px;}
 h1,h2,h3 {color:#E9F7FF !important;}
 [data-testid="stMetric"] {background:#14283C;border:1px solid #28435A;border-radius:13px;padding:12px;}
-div[data-testid="stTabs"] button {font-weight:600;}
+div[data-testid="stTabs"] button {font-weight:600;color:#FFFFFF !important;}
+div[data-testid="stTabs"] button[aria-selected="true"] {color:#35C8F5 !important;}
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {background-color:#35C8F5 !important;}
+/* Contraste consistente nos textos apresentados sobre fundos escuros */
+.stApp [data-testid="stWidgetLabel"],
+.stApp [data-testid="stWidgetLabel"] *,
+.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stCaptionContainer"] *,
+.stApp [data-testid="stMetricLabel"],
+.stApp [data-testid="stMetricLabel"] *,
+.stApp [data-testid="stMetricValue"],
+.stApp [data-testid="stRadio"] label,
+.stApp [data-testid="stRadio"] label * {color:#FFFFFF !important;}
+/* Botões claros de download precisam de letras escuras */
+.stApp [data-testid="stDownloadButton"] button,
+.stApp [data-testid="stDownloadButton"] button * {color:#111111 !important;}
+.stApp [data-testid="stDownloadButton"] button {background:#FFFFFF !important;border:1px solid #C9D4E0 !important;}
+/* Sliders, indicadores e controlos ativos em ciano, sem vermelho */
+.stApp [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {background-color:#35C8F5 !important;border-color:#35C8F5 !important;}
+.stApp [data-testid="stSlider"] [data-baseweb="slider"] div[style*="rgb(255"] {background-color:#35C8F5 !important;}
+.stApp input[type="radio"], .stApp input[type="checkbox"] {accent-color:#35C8F5 !important;}
+
 .hero {background:linear-gradient(110deg,#142B40,#102034);border:1px solid #28475E;padding:24px;border-radius:18px;margin-bottom:16px;}
 .eyebrow {color:#35C8F5;letter-spacing:2px;font-size:12px;font-weight:700;}
 .smallnote {color:#A9C0D3;font-size:13px;}
@@ -78,9 +99,7 @@ def fig_image(arr, title, is_kspace=False):
 def compare(original,k_changed,result,tag):
     cols=st.columns(3)
     for col,a,title,is_k in zip(cols,[original,k_changed,result],['Imagem original','K-space processado','Reconstrução'],[False,True,False]):
-        
-        with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False},key=f'{tag}_{title}')
-            
+        with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False},key=f'compare_{tag}_{title}')
     vals=metrics(original,result)
     c1,c2,c3=st.columns(3)
     c1.metric('MSE',f'{vals["MSE"]:.5f}')
@@ -115,7 +134,7 @@ if uploaded is None:
     - **Ruído:** adicionar ruído gaussiano complexo.
     - **Métricas:** comparar MSE, PSNR e SSIM com a imagem original.
 
-    **Para a apresentação:** prepara dois ficheiros PNG/TIFF no computador e carrega-os sucessivamente aqui.""")
+    **Como começar:** carrega qualquer imagem de RM compatível para explorar os resultados.""")
     st.stop()
 
 try:
@@ -139,65 +158,82 @@ except ValueError as exc: st.error(str(exc)); st.stop()
 k=fft(image)
 
 st.caption(f'**Imagem ativa:** {source_label} · {image.shape[0]} × {image.shape[1]} píxeis')
-st.caption('Nota: valores de métricas obtidos com imagens carregadas diferentes não são diretamente comparáveis aos valores do relatório.')
 tabs=st.tabs(['Visão geral','Filtragem','Amostragem','Ruído','Métricas'])
 with tabs[0]:
     st.subheader('Da imagem ao k-space e de volta')
     c1,c2,c3=st.columns(3)
     for col,a,title,is_k in zip([c1,c2,c3],[image,k,inverse(k)],['Imagem original','FFT 2D: k-space','IFFT 2D: reconstrução'],[False,True,False]):
-        with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False})
+        with col: st.plotly_chart(fig_image(a,title,is_k),use_container_width=True,config={'displayModeBar':False},key=f'overview_{title}')
     st.info('Cada ponto do k-space contribui para a imagem como um todo. A FFT transforma a representação espacial em frequências; a IFFT permite reconstruí-la.')
-    st.latex(r'K=\operatorname{fftshift}(\operatorname{FFT2}(I))')
-    st.latex(r'I_{rec}=|\operatorname{IFFT2}(\operatorname{ifftshift}(K))|')
 
 with tabs[1]:
-    st.subheader('Experiência 1 · Filtragem das frequências espaciais')
+    st.subheader('Filtragem das frequências espaciais')
     a,b=st.columns([1,2])
     with a:
         kind=st.radio('Região preservada',['Baixas frequências','Altas frequências'])
         fraction=st.slider('Dimensão da região central (%)',2,80,20,2,key='filter_fraction')/100
-        st.caption('20% é o valor utilizado no Jupyter. A percentagem refere-se a cada dimensão da região central, não à área total.')
+        st.caption('A percentagem refere-se a cada dimensão da região central, não à área total.')
     masked=k*filter_mask(k.shape,fraction,kind)
     compare(image,masked,inverse(masked),'filtragem')
     st.info('**Baixas frequências:** estrutura global e contraste, com perda de detalhe. **Altas frequências:** contornos e transições, com perda de informação global. As duas regiões são complementares.')
 
 with tabs[2]:
-    st.subheader('Experiência 2 · Amostragem cartesiana parcial')
+    st.subheader('Amostragem cartesiana parcial')
     step=st.slider('Manter uma linha em cada N linhas',1,12,2,key='sampling_step')
     percent=100*len(range(0,k.shape[0],step))/k.shape[0]
-    st.caption(f'Linhas preservadas: {percent:.1f}% (aproximadamente {100/step:.1f}%). Para reproduzir o Jupyter: N=1 (100%), N=2 (50%) ou N=4 (25%).')
+    st.caption(f'Linhas preservadas: {percent:.1f}% (aproximadamente {100/step:.1f}%). N=1: 100%; N=2: ~50%; N=4: ~25%.')
     sampled=sample_lines(k,step)
     compare(image,sampled,inverse(sampled),'amostragem')
     st.info('As linhas não adquiridas são colocadas a zero. A subamostragem regular pode provocar **aliasing**, com sobreposição de estruturas na reconstrução. Esta é uma simulação simplificada, sem métodos de reconstrução acelerada.')
 
 with tabs[3]:
-    st.subheader('Experiência 3 · Ruído gaussiano complexo no k-space')
+    st.subheader('Ruído gaussiano complexo no k-space')
     level=st.slider('Nível de ruído',0.0,0.50,0.10,0.01,key='noise_level')
     seed=st.number_input('Semente aleatória',min_value=0,max_value=99999,value=42,step=1)
-    st.caption('No Jupyter: 0.00, 0.05, 0.10 e 0.20. O ruído é adicionado às componentes real e imaginária do k-space.')
+    st.caption('O ruído é adicionado às componentes real e imaginária do k-space.')
     noisy=add_noise(k,level,int(seed))
     compare(image,noisy,inverse(noisy),'ruido')
     st.info('O ruído gaussiano complexo introduz perturbações no k-space. Após a reconstrução de magnitude, observa-se granulação e perda progressiva de visibilidade anatómica.')
 
 with tabs[4]:
-    st.subheader('Experiência 4 · Avaliação quantitativa')
-    low=k*filter_mask(k.shape,.20,'Baixas frequências')
-    high=k*filter_mask(k.shape,.20,'Altas frequências')
-    variants={
-        'Reconstrução completa':inverse(k),
-        'Baixas frequências (20%)':inverse(low),
-        'Altas frequências (20%)':inverse(high),
-        'Amostragem 50%':inverse(sample_lines(k,2)),
-        'Amostragem 25%':inverse(sample_lines(k,4)),
-    }
-    table=pd.DataFrame([{'Reconstrução':name,**metrics(image,result)} for name,result in variants.items()])
-    st.dataframe(table.style.format({'MSE':'{:.5f}','PSNR (dB)':'{:.2f}','SSIM':'{:.4f}'}),hide_index=True,use_container_width=True)
-    chosen=st.selectbox('Métrica a comparar',['MSE','PSNR (dB)','SSIM'])
-    chart=go.Figure(go.Bar(x=table['Reconstrução'],y=table[chosen],marker_color=['#FF982E']+['#35C8F5']*4))
-    chart.update_layout(height=380,paper_bgcolor='#14283C',plot_bgcolor='#14283C',font_color='#E8F3FF',margin=dict(l=20,r=20,t=30,b=90),xaxis_tickangle=-18)
-    st.plotly_chart(chart,use_container_width=True)
-    st.download_button('Descarregar métricas (CSV)',table.to_csv(index=False).encode('utf-8-sig'),file_name='metricas_kspace.csv',mime='text/csv')
-    st.info('A tabela reproduz as cinco condições do Notebook. Os valores do relatório só são reproduzidos com a mesma imagem MRbrain, o mesmo pré-processamento e os mesmos parâmetros.')
+    st.subheader('Avaliação quantitativa')
+    st.markdown('Os resultados seguintes são recalculados automaticamente com **a imagem carregada e os parâmetros que selecionaste** nos outros separadores.')
 
-st.divider()
-st.caption('Projeto académico · Demonstração educativa. Não constitui ferramenta de diagnóstico nem simulação integral da física de aquisição clínica de RM.')
+    # As três experiências são independentes: cada uma parte do k-space original.
+    # Os valores de kind, fraction, step, level e seed vêm dos controlos dos separadores anteriores.
+    conditions = [
+        ('Filtragem', f'{kind} · região central {fraction * 100:.0f}%', inverse(masked)),
+        ('Amostragem', f'1 em cada {step} linhas · {percent:.1f}% preservadas', inverse(sampled)),
+        ('Ruído', f'Nível {level:.2f} · semente {int(seed)}', inverse(noisy)),
+    ]
+    results = [
+        {'Processamento': title, 'Parâmetros selecionados': description, **metrics(image, reconstruction)}
+        for title, description, reconstruction in conditions
+    ]
+    results_table = pd.DataFrame(results)
+
+    st.markdown('#### Resultados com os parâmetros atuais')
+    st.dataframe(
+        results_table.style.format({'MSE':'{:.5f}', 'PSNR (dB)':'{:.2f}', 'SSIM':'{:.4f}'}),
+        hide_index=True, use_container_width=True,
+    )
+
+    selected = st.selectbox('Métrica a comparar', ['SSIM', 'MSE', 'PSNR (dB)'], key='metric_choice')
+    figure = go.Figure(go.Bar(
+        x=results_table['Processamento'], y=results_table[selected],
+        marker_color=['#35C8F5', '#FF982E', '#67DCCC'],
+        text=[f'{value:.4f}' if selected != 'PSNR (dB)' else f'{value:.2f}' for value in results_table[selected]],
+        textposition='outside',
+    ))
+    figure.update_layout(
+        height=390, paper_bgcolor='#14283C', plot_bgcolor='#14283C',
+        font_color='#FFFFFF', margin=dict(l=30,r=20,t=45,b=55),
+        xaxis_title='', yaxis_title=selected,
+    )
+    st.plotly_chart(figure, use_container_width=True, key='dynamic_metrics_chart', config={'displayModeBar':False})
+    st.download_button(
+        'Descarregar métricas atuais (CSV)',
+        results_table.to_csv(index=False).encode('utf-8-sig'),
+        file_name='metricas_atuais_kspace.csv', mime='text/csv', key='download_dynamic_metrics',
+    )
+    st.info('**Interpretação:** MSE mais baixo, PSNR mais alto e SSIM mais próximo de 1 indicam maior fidelidade à imagem original. Cada processamento é avaliado separadamente, sem combinar filtragem, amostragem e ruído.')
